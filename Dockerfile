@@ -17,4 +17,4 @@ RUN uv sync --frozen
 # Copy the application code
 COPY ./app /code/app
 # Command to run the application
-CMD ["uv", "run", "fastapi", "run", "app/main.py", "--port", "80"]
+CMD ["uv", "run", "uvicorn", "run", "app/main.py", "--port", "80"]
