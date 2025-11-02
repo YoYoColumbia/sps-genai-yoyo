@@ -1,5 +1,6 @@
 from data_loader import get_data_loader
-from trainer import train_vae_model, vae_loss_function
+from trainer import train_vae_model, vae_loss_function, train_gan
+from generator import generate_samples_gan, generate_samples_vae
 from evaluator import evaluate_model
 from model import get_model
 from generator import generate_samples
@@ -8,14 +9,47 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+model_name = "GAN" 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-train_loader = get_data_loader('data/train', batch_size=64)
-test_loader = get_data_loader('data/test', batch_size=64, train=False)
+if model_name == "GAN":
+    train_loader = get_data_loader('data', batch_size=64, train=True,  dataset="MNIST")
+    test_loader  = get_data_loader('data', batch_size=64, train=False, dataset="MNIST")
+else:
+    train_loader = get_data_loader('data', batch_size=64, train=True,  dataset="CIFAR10")
+    test_loader  = get_data_loader('data', batch_size=64, train=False, dataset="CIFAR10")
 
-vae = get_model("VAE")
-criterion = vae_loss_function
-optimizer = optim.Adam(vae.parameters(), lr=0.001)
 
-train_vae_model(vae, train_loader, criterion, optimizer, device=device, epochs=5)
-generate_samples(vae, device, num_samples=10)
+model = get_model(model_name)
+
+if model_name == "VAE":
+    print("Training VAE...")
+    criterion = vae_loss_function
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+    train_vae_model(model, train_loader, criterion, optimizer,
+                    device=device, epochs=5)
+
+    save_model(model, path="vae.pth")
+    generate_samples(model, device, num_samples=10)
+
+elif model_name == "GAN":
+    print("Training GAN...")
+
+    # BCEWithLogitsLoss for GAN
+    criterion = nn.BCEWithLogitsLoss()
+
+    # Separate optimizers
+    optimizer_G = optim.Adam(model.generator.parameters(), lr=0.0002, betas=(0.5, 0.999))
+    optimizer_D = optim.Adam(model.discriminator.parameters(), lr=0.0002, betas=(0.5, 0.999))
+
+    train_gan(model, train_loader, criterion, optimizer_G, optimizer_D,
+              device=device, epochs=10)
+
+    save_model(model.generator, path="generator.pth")
+    save_model(model.discriminator, path="discriminator.pth")
+
+    generate_samples(model, device, num_samples=16, nrow=4)
+
+else:
+    raise ValueError("model_name must be 'VAE' or 'GAN'")

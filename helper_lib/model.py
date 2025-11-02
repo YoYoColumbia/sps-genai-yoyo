@@ -1,7 +1,63 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torchvision.models import resnet18
 
+# Define simple GAN architectures
+class Generator(nn.Module):
+    def __init__(self, z_dim: int = 100):
+        super().__init__()
+        self.z_dim = z_dim
+        self.fc = nn.Sequential(
+            nn.Linear(z_dim, 7 * 7 * 128),
+            nn.BatchNorm1d(7 * 7 * 128),
+            nn.ReLU(inplace=True),
+        )
+        self.deconv = nn.Sequential(
+            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+
+            nn.ConvTranspose2d(64, 1, kernel_size=4, stride=2, padding=1),
+            nn.Tanh(),  # output in [-1, 1]
+        )
+
+    def forward(self, z):
+        x = self.fc(z)                       # (B, 7*7*128)
+        x = x.view(-1, 128, 7, 7)           # (B, 128, 7, 7)
+        x = self.deconv(x)                  # (B, 1, 28, 28)
+        return x
+
+
+class Discriminator(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(1, 64, kernel_size=4, stride=2, padding=1),
+            nn.LeakyReLU(0.2, inplace=True),
+
+            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2, inplace=True),
+        )
+        self.classifier = nn.Linear(128 * 7 * 7, 1)
+
+    def forward(self, x):
+        h = self.features(x)
+        h = h.view(x.size(0), -1)
+        logits = self.classifier(h)  # (B,1)
+        return logits
+    
+
+class GAN(nn.Module):
+    """Wrapper for Generator and Discriminator"""
+    def __init__(self, latent_dim=100):
+        super().__init__()
+        self.generator = Generator(z_dim=latent_dim)
+        self.discriminator = Discriminator()
+        self.latent_dim = latent_dim
+
+# Define simple VAE architectures
 class VAE(nn.Module):
     """
     A simple convolutional VAE for images of shape (in_channels, img_size, img_size).
@@ -67,7 +123,7 @@ class VAE(nn.Module):
         recon = self.decode(z)
         return recon, mu, logvar
 
-def get_model(model_name, num_classes=10, in_channels=3, **kwargs):
+def get_model(model_name, num_classes: int | None = None, in_channels: int | None = None, **kwargs):
     if model_name == "FCNN":
         model = nn.Sequential(
             nn.Flatten(),
@@ -95,6 +151,8 @@ def get_model(model_name, num_classes=10, in_channels=3, **kwargs):
             img_size=kwargs.get("img_size", 32),
             latent_dim=kwargs.get("latent_dim", 64),
         )
+    elif model_name == "GAN":
+        model = GAN(latent_dim=kwargs.get("latent_dim", 100))
     else:
         raise ValueError("Unknown model name")
 

@@ -6,7 +6,7 @@ dist/
 wheels/
 *.egg-info
 *.pth
-data/
+data
 *.pyc
 
 # Virtual environments
