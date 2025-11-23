@@ -115,3 +115,57 @@ def train_gan(model, data_loader, criterion, optimizer_G, optimizer_D, device='c
         print(f"[GAN] Epoch {epoch+1}/{epochs} | D_loss: {running_D/len(data_loader):.4f} | G_loss: {running_G/len(data_loader):.4f}")
 
     return model
+
+
+def train_diffusion(model, data_loader, criterion, optimizer, device='cpu', epochs=10):
+    """
+    Train a diffusion epsilon-prediction model.
+    Assumes:
+      - model(x_t, t) -> predicted noise ε
+      - criterion(pred_noise, true_noise) -> scalar loss (e.g., MSELoss)
+      - inputs from data_loader are images in [0, 1] or [-1, 1]
+    """
+    model.to(device)
+
+    T = 1000
+    betas = torch.linspace(1e-4, 0.02, T, device=device)
+    alphas = 1.0 - betas
+    alphas_cumprod = torch.cumprod(alphas, dim=0)  # (T,)
+
+    for epoch in range(epochs):
+        model.train()
+        running_loss = 0.0
+
+        pbar = tqdm(data_loader, desc=f"[Diffusion] Epoch {epoch+1}/{epochs}")
+        for batch in pbar:
+            if isinstance(batch, (list, tuple)) and len(batch) >= 1:
+                x0 = batch[0]
+            else:
+                x0 = batch
+
+            x0 = x0.to(device)
+
+            bsz = x0.size(0)
+            t = torch.randint(0, T, (bsz,), device=device)
+
+            noise = torch.randn_like(x0)
+
+            alpha_bar_t = alphas_cumprod[t].view(bsz, 1, 1, 1)
+
+            x_t = torch.sqrt(alpha_bar_t) * x0 + torch.sqrt(1.0 - alpha_bar_t) * noise
+
+            pred_noise = model(x_t, t)
+
+            loss = criterion(pred_noise, noise)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            running_loss += loss.item()
+            pbar.set_postfix(loss=f"{loss.item():.4f}")
+
+        avg_loss = running_loss / len(data_loader)
+        print(f"[Diffusion] Epoch {epoch+1}/{epochs} | Loss: {avg_loss:.4f}")
+
+    return model

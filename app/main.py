@@ -54,6 +54,51 @@ def embed(request: EmbedRequest):
         norm=float(norm)
     )
 
+# RNN Text Generator
+from app.rnn_model import RNNTextGenerator
+import torch
+
+# Load trained RNN model (just like CNN)
+RNN_MODEL_PATH = "app/model_rnn.pth"
+RNN_VOCAB_PATH = "app/rnn_vocab.pth"
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+try:
+    rnn_vocab = torch.load(RNN_VOCAB_PATH)
+    word2idx = rnn_vocab["word2idx"]
+    idx2word = rnn_vocab["idx2word"]
+
+    rnn_model = RNNTextGenerator(vocab_size=len(word2idx)).to(device)
+    rnn_model.load_state_dict(torch.load(RNN_MODEL_PATH, map_location=device))
+    rnn_model.eval()
+    rnn_load_error = None
+except Exception as e:
+    rnn_model = None
+    word2idx = None
+    idx2word = None
+    rnn_load_error = e
+
+@app.get("/rnn/health")
+def rnn_health():
+    if rnn_model is None:
+        return {"status": "error", "detail": str(rnn_load_error)}
+    return {"status": "ok", "device": str(device), "vocab_size": len(word2idx)}
+
+@app.post("/generate_with_rnn")
+def generate_with_rnn(request: TextGenerationRequest):
+    if rnn_model is None:
+        return {"error": "RNN model not loaded", "detail": str(rnn_load_error)}
+
+    generated_text = rnn_model.generate(
+        start_word=request.start_word.lower(),
+        length=request.length,
+        word2idx=word2idx,
+        idx2word=idx2word,
+        device=device
+    )
+    return {"generated_text": generated_text}
+
 # CNN Image Classifier (CIFAR-10)
 
 import io
